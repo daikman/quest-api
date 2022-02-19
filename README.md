@@ -2,7 +2,7 @@
 node.js REST API for my quest journal app. Stores users' quests and fetches them.
 
 # example use
-if you go to [this url](https://sordid-occipital-crayfish.glitch.me/) and add "check_board/AmazingAdventure", it will return an object like this:
+if you go to [this url](https://quest-journal-api.glitch.me/) and add "check_board/AmazingAdventure", it will return an object like this:
 
 ```
 {
