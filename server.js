@@ -6,6 +6,8 @@ const app = express();
 app.use(cors())
 app.use(express.json())
 
+const dbPath = "/.data/adventures.json"
+
 app.get('/', (req, res) => {
     res.json({
         actions: 'get_board/<board_name>, check_board/<board_name>, save_board'
@@ -15,7 +17,7 @@ app.get('/', (req, res) => {
 app.get('/get_board/:board_id', (req, res) => {
     let board = req.params.board_id;
 
-    fs.readFile( __dirname + "/" + "adventures.json", 'utf8', function (err, data) {
+    fs.readFile( __dirname + dbPath, 'utf8', function (err, data) {
       var allAdventures = JSON.parse(data);
       var adventures = allAdventures[board]
       res.end( JSON.stringify(adventures));
@@ -25,7 +27,7 @@ app.get('/get_board/:board_id', (req, res) => {
 app.get('/check_board/:board_id', (req, res) => {
     let board = req.params.board_id;
 
-    fs.readFile( __dirname + "/" + "adventures.json", 'utf8', function (err, data) {
+    fs.readFile( __dirname + dbPath, 'utf8', function (err, data) {
 
       var allAdventures = JSON.parse(data);
       let names = Object.keys(allAdventures)
@@ -50,7 +52,7 @@ app.get('/check_board/:board_id', (req, res) => {
 app.post('/save_board', function (req, res) {
 
   // get old adventures
-  fs.readFile( __dirname + "/" + "adventures.json", 'utf8', function (err, data) {
+  fs.readFile( __dirname + dbPath, 'utf8', function (err, data) {
     data = JSON.parse( data );
     // combine with new data
     data = {...data, ...req.body}
@@ -59,7 +61,7 @@ app.post('/save_board', function (req, res) {
     res.end( JSON.stringify(data));
 
     // write over file
-    fs.writeFile('adventures.json', JSON.stringify(data), (err) => {
+    fs.writeFile('/.data/adventures.json', JSON.stringify(data), (err) => {
       if (err) {
           throw err;
       }
