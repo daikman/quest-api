@@ -1,148 +1,151 @@
-const express = require('express');
-const fs = require("fs");
-const cors = require("cors");
+const express = require('express')
+const fs = require("fs")
+const cors = require("cors")
+const bcrypt = require("bcrypt")
 
-const app = express();
+const app = express()
 app.use(cors())
 app.use(express.json())
 
 const dbPath = "/.data/adventures.json"
 
 app.get('/', (req, res) => {
-    res.json({
-        actions: 'get_board/<board_name>, check_board/<board_name>, save_board'
-    });
+    res.send("hello")
 });
 
-app.get('/get_board/:board_id/:password', (req, res) => {
-    let board = req.params.board_id;
-
-    fs.readFile( __dirname + dbPath, 'utf8', function (err, data) {
-      let allAdventures = JSON.parse(data);
-      let reqBoard = allAdventures[board]
-      
-      let passwordNeeded = reqBoard["password-for"] == "read-write" |
-          reqBoard["password-for"] == "read"
-      let password = reqBoard.password
-      
-      // remove private info
-      delete reqBoard.password
-      
-      if (passwordNeeded) {
-        if (req.params.password == password) {
-          res.end(JSON.stringify(reqBoard));
-        } else {
-          res.end(JSON.stringify("wrong password"))
-        }
-      } else {
-        res.end(JSON.stringify(reqBoard));
-      }
-      
-    });
+app.post('/register/', (req, res) => {
+  const username = req.body.username
+  const pw = req.body.password
   
-});
-
-app.get('/check_board/:board_id', (req, res) => {
-    let board = req.params.board_id;
-
-    fs.readFile( __dirname + dbPath, 'utf8', function (err, data) {
-
-      var allAdventures = JSON.parse(data);
-      let names = Object.keys(allAdventures)
-
-      let conflict
-      if (names.indexOf(board) == -1) {
-        conflict = false
-      } else {
-        conflict = true
-      }
-
-      res.end( JSON.stringify(
-        {
-          name_taken: conflict
-        }
-      ));
-
-    });
-
-});
-
-app.post('/save_board', function (req, res) {
+  const users = JSON.parse(fs.readFileSync( __dirname + "/.data/users.json", "utf8"))
   
-  let bod = req.body
-  let passwordInput = bod.password
-  let toReplace = Object.keys(bod)[0]
-  let replacement = Object.values(bod)[0]
-  delete bod.password
+  // check username is unique
+  if (users.map(d => d.n).includes(username)) {
+    res.send({
+      success: false,
+      message: "Username taken."
+    })
+    return
+  }
+  
+  // check username contains 'normal' characters
+  if (!/^[A-Za-z0-9]*$/.test(username)) {
+    res.send({
+      success: false,
+      message: "Username must contain only letters or numbers."
+    })
+    return
+  }
+  
+  // add user with default journals
+  const defaultJournals = JSON.parse(fs.readFileSync( __dirname + "/journals-default.json", "utf8"))
+  defaultJournals[0].id = genJournalId()
+  
+  const user = {
+    "n": username,
+    "p": bcrypt.hashSync(pw, 10),
+    "journals": [defaultJournals[0].id]
+  }
 
-  // get old adventures
-  fs.readFile( __dirname + dbPath, 'utf8', function (err, allData) {
-    
-    allData = JSON.parse( allData );
-    let data = allData[toReplace];
-    
-    let password = data.password
-    let passwordNeeded = data["password-for"] == "write" | data["password-for"] == "read-write"
-
-    if (passwordNeeded) {
-      if (password == passwordInput) {
-        replacement.password = password
-        allData[toReplace] = replacement
-      } else {
-        res.end(JSON.stringify("wrong password"))
-      }
-    } else {
-      replacement.password = password
-      allData[toReplace] = replacement
-    }
-
-    // write over file
-    fs.writeFile(__dirname + dbPath, JSON.stringify(allData), (err) => {
-      if (err) {
-          throw err;
-      } else {
-        res.end(JSON.stringify("quests saved"))
-      }
-    });
-  });
-
+  users.push(user)
+  
+  // save user and journals
+  fs.writeFileSync(__dirname + "/.data/users.json", JSON.stringify(users))
+  const journals = JSON.parse(fs.readFileSync( __dirname + "/.data/journals.json", "utf8"))
+  journals.push(defaultJournals)
+  fs.writeFileSync(__dirname + "/.data/journals.json", JSON.stringify(journals))
+  
+  res.end(JSON.stringify({
+    success: true,
+    journals: defaultJournals
+  }))
+  
 })
 
-app.post('/new_board', function (req, res) {
+app.post('/login/', (req, res) => {
+  const user = req.body.username;
+  const pw = req.body.password
   
-  let newQuests = Object.values(req.body)[0]
-  let newName = Object.keys(req.body)[0]
-  let oldName = req.body.oldBoard
-  delete req.body.oldBoard
+  const users = JSON.parse(fs.readFileSync( __dirname + "/.data/users.json", "utf8"))
+  // check username exists
+  if (!users.map(u => u.n).includes(user)) {
+    res.send({
+      success: false,
+      message: "Username can't be found."
+    })
+    return
+  }
   
-  // get old adventures
-  fs.readFile( __dirname + dbPath, 'utf8', function (err, allData) {
-    
-    allData = JSON.parse(allData);
-    let allNames = Object.keys(allData)
-    
-    if (allNames.indexOf(newName) != -1) {
-      res.end(JSON.stringify("name taken"))
-      return
-    }
-    
-    // if user is working on default board and wants to create a new one
-    // then don't replace current quests with default
-    if (oldName != "default") {
-      newQuests.quests = allData["default"].quests
-    }
-    allData[newName] = newQuests
+  const userData = users.filter(d => d.n == user)[0]
+  
+  // check password
+  const hash = userData.p
+  
+  if (!bcrypt.compareSync(pw, hash)) {
+    res.send({
+      success: false,
+      message: "Password is incorrect."
+    })
+    return
+  }
+  
+  const journals = JSON.parse(fs.readFileSync( __dirname + "/.data/journals.json", "utf8"))
+  const userJournals = journals.filter(journal => userData.journals.includes(journal.id))
+  
+  res.end(JSON.stringify({
+    success: true,
+    journals: userJournals
+  }))
+  
+})
 
-    // write over file
-    fs.writeFile(__dirname + dbPath, JSON.stringify(allData), (err) => {
-      if (err) {
-          throw err;
-      } else {
-        res.end(JSON.stringify(allData[newName]));
-      }
-    });
-  });
+function genJournalId() {
+  return Date().toString() + Math.random(999999)
+}
 
+app.post('/save', function(req, res) {
+  const journals = req.body.journals
+  const ids = journals.map(j => j.id).filter(j => j)
+  
+  // get user from IDs of boards
+  const users = JSON.parse(fs.readFileSync( __dirname + "/.data/users.json", "utf8"))
+  const allJournalIds = users.map(u => u.journals)
+  
+  const userIndex = allJournalIds.map(l => ids.toString() == l.toString()).indexOf(true)
+  const user = users[userIndex]
+  
+  if (!user) {
+    res.send({
+      success: false,
+      message: "Cannot save, user not found."
+    })
+    return
+  }
+  
+  // overwrite journals and add new ones
+  const allJournals = JSON.parse(fs.readFileSync( __dirname + "/.data/journals.json", "utf8"))
+  const allIds = allJournals.map(j => j.id)
+  for (let journal of journals) {
+    if (allIds.includes(journal.id)) {
+      
+      // if journal already exists, replace old version
+      const index = allIds.indexOf(journal.id)
+      allJournals[index] = journal
+      
+    } else {
+      
+      // if it's a new journal, push it
+      allJournals.push(journal)
+      
+    }
+  }
+  
+  fs.writeFileSync(__dirname + "/.data/journals.json", JSON.stringify(allJournals))
+  
+  res.send({
+    success: true
+  })
+  
 })
 
 const port = process.env.PORT || 2020
